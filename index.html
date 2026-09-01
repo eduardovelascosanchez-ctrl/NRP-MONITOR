@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#04070d">
+<title>Simulador NRP</title>
+<style>
+:root{
+  --bg:#04070d; --panel:#0b1220; --panel2:#111a2b; --line:#1e2b45;
+  --hr:#38ff8f; --spo2:#33d6ff; --resp:#ffd23f; --alarm:#ff4d5e;
+  --txt:#e7eef9; --muted:#7f92b0; --accent:#5b8dff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-user-select:none;user-select:none;touch-action:manipulation;}
+button{font-family:inherit;cursor:pointer;border:none;color:inherit;}
+.hidden{display:none!important;}
+
+/* ---------- Layout ---------- */
+#app{height:100dvh;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#060a12;
+  border-bottom:1px solid var(--line);flex:0 0 auto;}
+.topbar .brand{font-weight:700;letter-spacing:.5px;font-size:15px;}
+.topbar .brand span{color:var(--hr);}
+.topbar .disc{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+.topbar .spacer{flex:1;}
+.clock{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;}
+.iconbtn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:8px 12px;font-size:13px;font-weight:600;color:var(--txt);}
+.iconbtn:active{background:#1a2740;}
+.iconbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+.main{flex:1;display:flex;min-height:0;}
+.monitor{flex:1;display:flex;flex-direction:column;min-width:0;background:#02040a;}
+
+/* ---------- Monitor rows ---------- */
+.vrow{flex:1;display:flex;border-bottom:1px solid #0d1526;min-height:0;position:relative;}
+.vrow:last-child{border-bottom:none;}
+.wave{flex:1;position:relative;min-width:0;overflow:hidden;}
+.wave canvas{position:absolute;inset:0;width:100%;height:100%;}
+.readout{flex:0 0 34%;max-width:360px;display:flex;flex-direction:column;
+  justify-content:center;align-items:flex-end;padding:6px 20px;border-left:1px solid #0d1526;}
+.readout .lbl{font-size:15px;font-weight:700;letter-spacing:1px;align-self:flex-start;
+  display:flex;align-items:center;gap:8px;}
+.readout .unit{font-size:15px;color:var(--muted);font-weight:600;}
+.bignum{font-weight:800;line-height:.9;font-variant-numeric:tabular-nums;
+  font-size:clamp(48px,15vh,150px);}
+.sub{font-size:13px;color:var(--muted);align-self:flex-start;}
+.hr-c{color:var(--hr);} .spo2-c{color:var(--spo2);}
+.alarm-dot{width:12px;height:12px;border-radius:50%;background:#25406a;}
+.alarming .bignum{animation:blink 1s steps(2,start) infinite;}
+.alarming .alarm-dot{background:var(--alarm);box-shadow:0 0 12px var(--alarm);}
+@keyframes blink{50%{opacity:.35;}}
+
+/* ---------- Bottom timing strip (participant sees timers) ---------- */
+.tstrip{flex:0 0 auto;display:flex;gap:10px;padding:10px 14px;background:#060a12;
+  border-top:1px solid var(--line);align-items:stretch;flex-wrap:wrap;}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:10px 14px;display:flex;flex-direction:column;gap:6px;min-width:150px;}
+.tcard h4{margin:0;font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;}
+.chrono{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;}
+.chrono.run{color:var(--hr);}
+.apgar-marks{display:flex;gap:6px;flex-wrap:wrap;}
+.apgar-marks span{font-size:11px;padding:3px 7px;border-radius:8px;background:var(--panel2);color:var(--muted);}
+.apgar-marks span.hit{background:var(--resp);color:#1a1400;font-weight:700;}
+.metro-visual{display:flex;align-items:center;gap:10px;}
+.pulse-ring{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);flex:0 0 auto;transition:transform .06s,background .06s;}
+.pulse-ring.vent{border-color:var(--resp);}
+.pulse-ring.comp{border-color:var(--spo2);}
+.pulse-ring.beat{transform:scale(1.35);}
+.pulse-ring.beat.vent{background:var(--resp);}
+.pulse-ring.beat.comp{background:var(--spo2);}
+.metro-label{font-size:13px;color:var(--muted);}
+.metro-count{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;}
+.rowbtns{display:flex;gap:6px;flex-wrap:wrap;}
+.mini{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+  font-size:12px;font-weight:600;}
+.mini:active{background:#1a2740;}
+.mini.on{background:var(--hr);color:#02120a;border-color:var(--hr);}
+.mini.on.comp{background:var(--spo2);color:#02121a;border-color:var(--spo2);}
+.mini.on.cpr{background:var(--alarm);color:#fff;border-color:var(--alarm);}
+
+/* ---------- Instructor panel ---------- */
+.instructor{flex:0 0 340px;max-width:340px;background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;overflow-y:auto;}
+.instructor.wide{flex-basis:340px;}
+.ipanel-head{position:sticky;top:0;background:var(--panel);padding:12px 14px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:8px;z-index:2;}
+.ipanel-head b{font-size:14px;}
+.ipanel-head .lock{margin-left:auto;font-size:11px;color:var(--muted);}
+.sect{padding:14px;border-bottom:1px solid var(--line);}
+.sect h3{margin:0 0 10px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
+.ctrl{margin-bottom:16px;}
+.ctrl-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;}
+.ctrl-head .name{font-weight:700;font-size:14px;}
+.ctrl-head .val{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;}
+.stepper{display:flex;gap:6px;align-items:center;}
+.stepper button{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  font-size:20px;font-weight:800;padding:12px 0;}
+.stepper button:active{background:#1a2740;}
+.stepper .big{flex:1.3;}
+input[type=range]{width:100%;margin-top:10px;accent-color:var(--accent);height:26px;}
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.preset{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px 8px;
+  font-size:12.5px;font-weight:600;text-align:left;line-height:1.25;}
+.preset:active{background:#1a2740;}
+.preset small{display:block;color:var(--muted);font-size:10.5px;font-weight:500;}
+.preset.danger{border-color:#5a2230;}
+.preset.good{border-color:#1f5a38;}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.tbl th,.tbl td{border:1px solid var(--line);padding:5px 6px;text-align:center;}
+.tbl th{color:var(--muted);font-weight:600;background:var(--panel2);}
+.note{font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:8px;}
+.toggle-row{display:flex;gap:8px;flex-wrap:wrap;}
+.switch{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;}
+.switch input{width:20px;height:20px;accent-color:var(--accent);}
+.footer-disc{padding:12px 14px;font-size:10px;color:var(--muted);text-align:center;line-height:1.5;}
+
+/* PIN overlay */
+.overlay{position:fixed;inset:0;background:rgba(2,4,10,.92);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;z-index:50;}
+.pinbox{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px;width:300px;text-align:center;}
+.pinbox h2{margin:0 0 6px;font-size:18px;}
+.pinbox p{margin:0 0 16px;font-size:12px;color:var(--muted);}
+.pindots{display:flex;justify-content:center;gap:12px;margin-bottom:18px;}
+.pindots i{width:14px;height:14px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);}
+.pindots i.f{background:var(--accent);border-color:var(--accent);}
+.pinpad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.pinpad button{background:var(--panel2);border:1px solid var(--line);border-radius:12px;font-size:22px;font-weight:700;padding:14px 0;}
+.pinpad button:active{background:#1a2740;}
+
+@media (max-width:820px){
+  .main{flex-direction:column;}
+  .instructor{flex:0 0 auto;max-width:none;border-left:none;border-top:1px solid var(--line);}
+  .readout{flex-basis:40%;}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="brand">NRP<span>·</span>SIM</div>
+    <div class="disc">Uso exclusivo para simulación y educación</div>
+    <div class="spacer"></div>
+    <div class="clock" id="clock">--:--</div>
+    <button class="iconbtn" id="fsBtn">⛶ Pantalla</button>
+    <button class="iconbtn on" id="instrBtn">👨‍⚕️ Instructor</button>
+  </div>
+
+  <div class="main">
+    <!-- ===== MONITOR (participant) ===== -->
+    <div class="monitor">
+      <div class="vrow" id="hrRow">
+        <div class="wave"><canvas id="ecgCanvas"></canvas></div>
+        <div class="readout">
+          <div class="lbl hr-c">FC <span class="alarm-dot" id="hrDot"></span></div>
+          <div class="bignum hr-c" id="hrVal">120</div>
+          <div class="sub"><span class="unit">lpm</span> · <span id="hrRange">100–160</span></div>
+        </div>
+      </div>
+      <div class="vrow" id="spo2Row">
+        <div class="wave"><canvas id="plethCanvas"></canvas></div>
+        <div class="readout">
+          <div class="lbl spo2-c">SpO₂ <span class="alarm-dot" id="spo2Dot"></span></div>
+          <div class="bignum spo2-c" id="spo2Val">88</div>
+          <div class="sub"><span class="unit">%</span> preductal</div>
+        </div>
+      </div>
+
+      <!-- timing strip -->
+      <div class="tstrip">
+        <div class="tcard">
+          <h4>⏱ Cronómetro</h4>
+          <div class="chrono" id="chrono">00:00</div>
+          <div class="apgar-marks" id="apgarMarks">
+            <span data-t="60">1 min · Apgar / FC</span>
+            <span data-t="300">5 min · Apgar</span>
+            <span data-t="600">10 min</span>
+          </div>
+          <div class="rowbtns">
+            <button class="mini" id="chStart">▶ Iniciar</button>
+            <button class="mini" id="chReset">↺ Reiniciar</button>
+          </div>
+        </div>
+
+        <div class="tcard">
+          <h4>🫁 Ventilación VPP</h4>
+          <div class="metro-visual">
+            <div class="pulse-ring vent" id="ventRing"></div>
+            <div>
+              <div class="metro-count" id="ventRate">50<span style="font-size:12px;color:var(--muted)">/min</span></div>
+              <div class="metro-label">"Ventila… dos… tres…"</div>
+            </div>
+          </div>
+          <div class="rowbtns">
+            <button class="mini" id="ventBtn">Iniciar</button>
+            <button class="mini" data-vent="40">40</button>
+            <button class="mini" data-vent="50">50</button>
+            <button class="mini" data-vent="60">60</button>
+          </div>
+        </div>
+
+        <div class="tcard">
+          <h4>❤ Compresiones 3:1</h4>
+          <div class="metro-visual">
+            <div class="pulse-ring comp" id="compRing"></div>
+            <div>
+              <div class="metro-count">90:30</div>
+              <div class="metro-label" id="cprPhase">Uno · dos · tres · ventila</div>
+            </div>
+          </div>
+          <div class="rowbtns">
+            <button class="mini comp" id="cprBtn">Iniciar 3:1</button>
+            <button class="mini cpr" id="rcpGenBtn">RCP 110/min</button>
+            <button class="mini" id="soundBtn">🔊 Sonido</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== INSTRUCTOR PANEL ===== -->
+    <div class="instructor" id="instrPanel">
+      <div class="ipanel-head">
+        <b>🎛 Control del instructor</b>
+        <span class="lock">oculto al participante</span>
+      </div>
+
+      <div class="sect">
+        <h3>Signos vitales</h3>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="name hr-c">Frecuencia cardiaca</span><span class="val hr-c" id="hrTgt">120</span></div>
+          <div class="stepper">
+            <button data-hr="-10">−10</button>
+            <button data-hr="-5">−5</button>
+            <button class="big" data-hr="+5">+5</button>
+            <button data-hr="+10">+10</button>
+          </div>
+          <input type="range" id="hrSlider" min="0" max="220" value="120">
+        </div>
+        <div class="ctrl">
+          <div class="ctrl-head"><span class="name spo2-c">Saturación O₂</span><span class="val spo2-c" id="spo2Tgt">88</span></div>
+          <div class="stepper">
+            <button data-spo2="-5">−5</button>
+            <button data-spo2="-2">−2</button>
+            <button class="big" data-spo2="+2">+2</button>
+            <button data-spo2="+5">+5</button>
+          </div>
+          <input type="range" id="spo2Slider" min="0" max="100" value="88">
+        </div>
+        <label class="switch"><input type="checkbox" id="smoothChk" checked> Transición fisiológica suave</label>
+      </div>
+
+      <div class="sect">
+        <h3>Presets fisiológicos</h3>
+        <div class="presets">
+          <button class="preset good" data-preset="transicion">Transición normal<small>FC 140 · SpO₂ sube 60→90</small></button>
+          <button class="preset" data-preset="apnea">Apnea<small>FC 90 · SpO₂ 55</small></button>
+          <button class="preset danger" data-preset="brady">Bradicardia<small>FC 50 · SpO₂ 45</small></button>
+          <button class="preset danger" data-preset="critica">Bradicardia crítica<small>FC 40 · SpO₂ 40</small></button>
+          <button class="preset good" data-preset="respuesta">Respuesta a VPP<small>FC sube a 130 · SpO₂ 92</small></button>
+          <button class="preset danger" data-preset="paro">Paro / sin FC<small>FC 0 · SpO₂ 30</small></button>
+          <button class="preset good" data-preset="rosc">Recuperación / ROSC<small>FC 150 · SpO₂ 90</small></button>
+          <button class="preset good" data-preset="estable">Estable RN<small>FC 140 · SpO₂ 96</small></button>
+        </div>
+        <p class="note">La transición suave hace que FC y SpO₂ evolucionen progresivamente hacia el objetivo, no en saltos. El participante debe interpretar el cambio, no verlo etiquetado.</p>
+      </div>
+
+      <div class="sect">
+        <h3>SpO₂ preductal objetivo · NRP</h3>
+        <table class="tbl">
+          <tr><th>Minuto de vida</th><th>SpO₂</th></tr>
+          <tr><td>1 min</td><td>60–65 %</td></tr>
+          <tr><td>2 min</td><td>65–70 %</td></tr>
+          <tr><td>3 min</td><td>70–75 %</td></tr>
+          <tr><td>4 min</td><td>75–80 %</td></tr>
+          <tr><td>5 min</td><td>80–85 %</td></tr>
+          <tr><td>10 min</td><td>85–95 %</td></tr>
+        </table>
+        <p class="note">Referencia educativa. Verificar contra la edición vigente del NRP (AAP/AHA) antes de usarla en evaluación formal.</p>
+      </div>
+
+      <div class="sect">
+        <h3>Umbrales de alarma</h3>
+        <div class="stepper" style="margin-bottom:6px">
+          <span class="metro-label" style="align-self:center;flex:1">FC baja &lt;</span>
+          <button data-alrm="hrLow" data-d="-5">−</button>
+          <span class="val" id="hrLowV" style="font-size:18px;min-width:40px;text-align:center">100</span>
+          <button data-alrm="hrLow" data-d="5">+</button>
+        </div>
+        <div class="stepper">
+          <span class="metro-label" style="align-self:center;flex:1">SpO₂ baja &lt;</span>
+          <button data-alrm="spo2Low" data-d="-2">−</button>
+          <span class="val" id="spo2LowV" style="font-size:18px;min-width:40px;text-align:center">85</span>
+          <button data-alrm="spo2Low" data-d="2">+</button>
+        </div>
+        <label class="switch" style="margin-top:8px"><input type="checkbox" id="alarmSound"> Sonido de alarma</label>
+      </div>
+
+      <div class="footer-disc">
+        NRP·SIM — Herramienta educativa para cursos NRP / RCP.<br>
+        NO es un dispositivo médico. No usar para decisiones clínicas reales.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PIN overlay -->
+<div class="overlay hidden" id="pinOverlay">
+  <div class="pinbox">
+    <h2>Modo instructor</h2>
+    <p>Ingresa el PIN para mostrar el panel de control (por defecto: 1234)</p>
+    <div class="pindots"><i></i><i></i><i></i><i></i></div>
+    <div class="pinpad">
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button data-k="x">✕</button><button data-k="0">0</button><button data-k="del">⌫</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   NRP·SIM — Simulador de escenarios NRP
+   Uso exclusivo para simulación y educación. No es dispositivo médico.
+   ============================================================ */
+
+/* ---------- Estado fisiológico ---------- */
+const S = {
+  hrTarget:120, hrShown:120,
+  spo2Target:88, spo2Shown:88,
+  smooth:true,
+  hrLow:100, spo2Low:85,
+  alarmSound:false,
+  transTimer:null   // para presets con rampa (p.ej. transición)
+};
+
+/* ---------- Utilidades DOM ---------- */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------- Audio (WebAudio, sin archivos) ---------- */
+let AC=null, soundOn=false;
+function ensureAudio(){ if(!AC){ try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } if(AC&&AC.state==='suspended')AC.resume(); }
+function beep(freq=880,dur=0.06,type='sine',gain=0.25){
+  if(!AC||!soundOn) return;
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(0.0001,AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(gain,AC.currentTime+0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);
+  o.connect(g).connect(AC.destination); o.start(); o.stop(AC.currentTime+dur+0.02);
+}
+
+/* ============================================================
+   MOTOR FISIOLÓGICO — transición suave hacia el objetivo
+   ============================================================ */
+function tickPhysio(dt){
+  // FC: la velocidad de aproximación depende de la magnitud (más lento cuanto más cerca)
+  const easeRate = S.smooth ? 0.9 : 60;   // unidades/seg base
+  ['hr','spo2'].forEach(k=>{
+    const tgt = k==='hr'?S.hrTarget:S.spo2Target;
+    let cur = k==='hr'?S.hrShown:S.spo2Shown;
+    const diff = tgt-cur;
+    if(Math.abs(diff)<0.4){ cur=tgt; }
+    else{
+      const speed = S.smooth ? Math.max(Math.abs(diff)*1.1, 2) : 400;
+      cur += Math.sign(diff)*Math.min(Math.abs(diff), speed*dt);
+    }
+    if(k==='hr') S.hrShown=cur; else S.spo2Shown=cur;
+  });
+}
+
+/* ---------- Variabilidad biológica para el display ---------- */
+let noiseT=0;
+function displayHR(){
+  if(S.hrShown<1) return 0;
+  const n = Math.sin(noiseT*2.1)*0.6 + (Math.random()-0.5)*0.8;
+  return Math.max(0,Math.round(S.hrShown + n));
+}
+function displaySpO2(){
+  if(S.spo2Shown<1) return 0;
+  const n = (Math.random()-0.5)*0.6;
+  return clamp(Math.round(S.spo2Shown + n),0,100);
+}
+
+/* ============================================================
+   MONITOR — curvas ECG y pletismográfica
+   ============================================================ */
+function setupCanvas(cv){
+  const dpr=window.devicePixelRatio||1;
+  const r=cv.getBoundingClientRect();
+  cv.width=r.width*dpr; cv.height=r.height*dpr;
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return ctx;
+}
+const ecgCv=$('ecgCanvas'), plethCv=$('plethCanvas');
+let ecgCtx, plethCtx;
+function resizeAll(){ ecgCtx=setupCanvas(ecgCv); plethCtx=setupCanvas(plethCv); }
+window.addEventListener('resize',resizeAll);
+
+// buffers de trazado tipo osciloscopio
+const SWEEP_SEC=4;         // segundos visibles
+let ecgBuf=[], plethBuf=[], sweepX=0, lastPhaseHR=0, lastPhasePl=0;
+
+function ecgSample(phase){
+  // phase 0..1 dentro del ciclo cardiaco; morfología P-QRS-T sencilla
+  const p=phase;
+  let y=0;
+  if(p<0.12){ y=0.08*Math.sin(Math.PI*(p/0.12)); }              // P
+  else if(p<0.18){ y=0; }
+  else if(p<0.21){ y=-0.12*((p-0.18)/0.03); }                   // Q
+  else if(p<0.25){ y=1.0*((p-0.21)/0.04); }                     // R up
+  else if(p<0.29){ y=1.0-1.35*((p-0.25)/0.04); }                // R down -> S
+  else if(p<0.33){ y=-0.35+0.35*((p-0.29)/0.04); }              // S back
+  else if(p<0.5){ y=0; }
+  else if(p<0.72){ y=0.22*Math.sin(Math.PI*((p-0.5)/0.22)); }   // T
+  else y=0;
+  return y;
+}
+function plethSample(phase){
+  const p=phase;
+  // ascenso rápido, dícrota suave
+  let y;
+  if(p<0.18){ y=Math.pow(p/0.18,0.8); }
+  else if(p<0.45){ y=1-0.55*((p-0.18)/0.27); }
+  else if(p<0.58){ y=0.45+0.12*Math.sin(Math.PI*((p-0.45)/0.13)); } // muesca dícrota
+  else { y=0.45*Math.pow(1-((p-0.58)/0.42),1.4); }
+  return y;
+}
+
+let physLast=performance.now();
+function drawFrame(now){
+  const dt=Math.min(0.05,(now-physLast)/1000); physLast=now;
+  noiseT+=dt;
+  tickPhysio(dt);
+
+  // avanzar fase de curvas según FC
+  const hr=S.hrShown;
+  const period = hr>1 ? 60/hr : 999;         // seg por latido
+  const px = ecgCv.getBoundingClientRect().width;
+  const speed = px/SWEEP_SEC;                // px/seg
+  const step = speed*dt;
+
+  // ECG
+  drawWave(ecgCtx, ecgBuf, ecgCv, dt, step, hr, ecgSample, '#38ff8f', (dt/period));
+  // Pleth (usa misma FC; amplitud baja si SpO2 baja / perfusión)
+  const perf = clamp(S.spo2Shown/95,0.25,1);
+  drawWave(plethCtx, plethBuf, plethCv, dt, step, hr, (ph)=>plethSample(ph)*perf, '#33d6ff', (dt/period));
+
+  // update readouts
+  renderReadouts();
+  requestAnimationFrame(drawFrame);
+}
+
+const waveState = new WeakMap();
+function drawWave(ctx,buf,cv,dt,step,hr,fn,color,phaseInc){
+  if(!ctx) return;
+  const r=cv.getBoundingClientRect(); const w=r.width,h=r.height;
+  let st=waveState.get(cv); if(!st){st={x:0,phase:0,pts:new Array(Math.ceil(w)).fill(null)}; waveState.set(cv,st);}
+  if(st.pts.length!==Math.ceil(w)) st.pts=new Array(Math.ceil(w)).fill(null);
+  // avanzar fase cardiaca
+  if(hr>1) st.phase=(st.phase+phaseInc)%1; else st.phase=0;
+  // rellenar columnas desde x anterior a nuevo x
+  const nx=st.x+step;
+  const from=Math.floor(st.x), to=Math.floor(nx);
+  for(let xi=from; xi<to; xi++){
+    const ix=((xi%Math.ceil(w))+Math.ceil(w))%Math.ceil(w);
+    const val = hr>1 ? fn(st.phase) : (Math.random()-0.5)*0.02;
+    st.pts[ix]=val;
+    // borrar una franja por delante (gap del barrido)
+    for(let g=1;g<=Math.ceil(step)+6;g++){ const gi=(ix+g)%Math.ceil(w); st.pts[gi]=null; }
+  }
+  st.x = nx % Math.ceil(w);
+
+  // dibujar
+  ctx.clearRect(0,0,w,h);
+  // grid tenue
+  ctx.strokeStyle='rgba(30,43,69,.5)'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let gx=0; gx<w; gx+=Math.max(28,w/16)){ ctx.moveTo(gx,0); ctx.lineTo(gx,h); }
+  for(let gy=0; gy<h; gy+=Math.max(24,h/4)){ ctx.moveTo(0,gy); ctx.lineTo(w,gy); }
+  ctx.stroke();
+
+  const mid=h*0.62, amp=h*0.42;
+  ctx.strokeStyle=color; ctx.lineWidth=2.4; ctx.lineJoin='round';
+  ctx.shadowColor=color; ctx.shadowBlur=6;
+  ctx.beginPath();
+  let started=false;
+  for(let xi=0; xi<st.pts.length; xi++){
+    const v=st.pts[xi];
+    if(v===null){ started=false; continue; }
+    const y=mid - v*amp;
+    if(!started){ctx.moveTo(xi,y);started=true;} else ctx.lineTo(xi,y);
+  }
+  ctx.stroke(); ctx.shadowBlur=0;
+}
+
+function renderReadouts(){
+  const hr=displayHR(), sp=displaySpO2();
+  $('hrVal').textContent = hr>0?hr:'--';
+  $('spo2Val').textContent = sp>0?sp:'--';
+  // alarmas
+  const hrAlarm = (hr>0 && hr<S.hrLow) || S.hrShown<1;
+  const spAlarm = (sp>0 && sp<S.spo2Low) || S.spo2Shown<1;
+  $('hrRow').classList.toggle('alarming',hrAlarm);
+  $('spo2Row').classList.toggle('alarming',spAlarm);
+  // sonido alarma
+  handleAlarmSound(hrAlarm||spAlarm);
+}
+
+let lastAlarmBeep=0;
+function handleAlarmSound(active){
+  if(!S.alarmSound||!active) return;
+  const t=performance.now();
+  if(t-lastAlarmBeep>900){ lastAlarmBeep=t; beep(1660,0.09,'square',0.18); }
+}
+
+/* ============================================================
+   CONTROLES DEL INSTRUCTOR
+   ============================================================ */
+function setHR(v){ S.hrTarget=clamp(Math.round(v),0,240); $('hrTgt').textContent=S.hrTarget; $('hrSlider').value=S.hrTarget; }
+function setSpO2(v){ S.spo2Target=clamp(Math.round(v),0,100); $('spo2Tgt').textContent=S.spo2Target; $('spo2Slider').value=S.spo2Target; }
+
+document.querySelectorAll('[data-hr]').forEach(b=>b.addEventListener('click',()=>{cancelRamp();setHR(S.hrTarget+parseInt(b.dataset.hr));}));
+document.querySelectorAll('[data-spo2]').forEach(b=>b.addEventListener('click',()=>{cancelRamp();setSpO2(S.spo2Target+parseInt(b.dataset.spo2));}));
+$('hrSlider').addEventListener('input',e=>{cancelRamp();setHR(+e.target.value);});
+$('spo2Slider').addEventListener('input',e=>{cancelRamp();setSpO2(+e.target.value);});
+$('smoothChk').addEventListener('change',e=>S.smooth=e.target.checked);
+
+// umbrales de alarma
+document.querySelectorAll('[data-alrm]').forEach(b=>b.addEventListener('click',()=>{
+  const k=b.dataset.alrm, d=parseInt(b.dataset.d);
+  if(k==='hrLow'){ S.hrLow=clamp(S.hrLow+d,0,240); $('hrLowV').textContent=S.hrLow; $('hrRange').textContent=S.hrLow+'–160';}
+  else{ S.spo2Low=clamp(S.spo2Low+d,0,100); $('spo2LowV').textContent=S.spo2Low; }
+}));
+$('alarmSound').addEventListener('change',e=>{S.alarmSound=e.target.checked; if(e.target.checked){soundOn=true;ensureAudio();}});
+
+/* ---------- Presets fisiológicos ---------- */
+function cancelRamp(){ if(S.transTimer){clearInterval(S.transTimer);S.transTimer=null;} }
+const PRESETS={
+  transicion:()=>{ // SpO2 sube progresivamente 60->90 en ~90s, FC 140
+    cancelRamp(); setHR(140); setSpO2(60);
+    let s=60; S.transTimer=setInterval(()=>{ s=Math.min(92,s+2); setSpO2(s); if(s>=92)cancelRamp(); },6000);
+  },
+  apnea:()=>{cancelRamp();setHR(90);setSpO2(55);},
+  brady:()=>{cancelRamp();setHR(50);setSpO2(45);},
+  critica:()=>{cancelRamp();setHR(40);setSpO2(40);},
+  respuesta:()=>{cancelRamp();setHR(130);setSpO2(92);},
+  paro:()=>{cancelRamp();setHR(0);setSpO2(30);},
+  rosc:()=>{cancelRamp();setHR(150);setSpO2(90);},
+  estable:()=>{cancelRamp();setHR(140);setSpO2(96);}
+};
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{ensureAudio();PRESETS[b.dataset.preset]();}));
+
+/* ============================================================
+   CRONÓMETRO + marcadores Apgar
+   ============================================================ */
+let chRunning=false, chStart=0, chAccum=0, chTimer=null;
+function fmt(ms){const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+function chTick(){
+  const el=$('chrono'); const ms=chAccum+(chRunning?performance.now()-chStart:0);
+  el.textContent=fmt(ms);
+  const secs=ms/1000;
+  document.querySelectorAll('#apgarMarks span').forEach(sp=>{
+    sp.classList.toggle('hit', secs>=+sp.dataset.t);
+  });
+}
+$('chStart').addEventListener('click',()=>{
+  if(chRunning){ chAccum+=performance.now()-chStart; chRunning=false; $('chStart').textContent='▶ Iniciar'; $('chrono').classList.remove('run'); }
+  else{ chStart=performance.now(); chRunning=true; $('chStart').textContent='⏸ Pausar'; $('chrono').classList.add('run'); }
+});
+$('chReset').addEventListener('click',()=>{chRunning=false;chAccum=0;$('chStart').textContent='▶ Iniciar';$('chrono').classList.remove('run');chTick();});
+setInterval(chTick,200);
+
+/* ============================================================
+   METRÓNOMOS
+   ============================================================ */
+let ventOn=false, ventRate=50, ventTimer=null, ventCount=0;
+function startVent(){
+  stopAllMetro('vent');
+  ventOn=true; $('ventBtn').textContent='Detener'; $('ventBtn').classList.add('on');
+  ensureAudio(); scheduleVent();
+}
+function scheduleVent(){
+  if(ventTimer)clearInterval(ventTimer);
+  ventTimer=setInterval(()=>{
+    ventCount++;
+    pulse($('ventRing'),'vent');
+    beep(760,0.05,'sine',0.22);
+  },60000/ventRate);
+}
+function stopVent(){ventOn=false;clearInterval(ventTimer);ventTimer=null;$('ventBtn').textContent='Iniciar';$('ventBtn').classList.remove('on');}
+$('ventBtn').addEventListener('click',()=>ventOn?stopVent():startVent());
+document.querySelectorAll('[data-vent]').forEach(b=>b.addEventListener('click',()=>{
+  ventRate=+b.dataset.vent; $('ventRate').innerHTML=ventRate+'<span style="font-size:12px;color:var(--muted)">/min</span>';
+  if(ventOn)scheduleVent();
+}));
+
+/* Compresiones 3:1 neonatal: 90 compresiones + 30 ventilaciones/min
+   = 120 eventos/min = un evento cada 0.5 s. Patrón: C C C V ... */
+let cprOn=false, cprTimer=null, cprIdx=0;
+function startCPR(){
+  stopAllMetro('cpr');
+  cprOn=true; $('cprBtn').textContent='Detener'; $('cprBtn').classList.add('on');
+  ensureAudio(); cprIdx=0;
+  cprTimer=setInterval(cprBeat,500); // 120/min
+}
+function cprBeat(){
+  const pos=cprIdx%4;
+  if(pos<3){ // compresión
+    pulse($('compRing'),'comp'); beep(520,0.045,'square',0.22);
+    $('cprPhase').textContent=(pos===0?'Uno':pos===1?'y dos':'y tres');
+  } else { // ventilación
+    pulse($('compRing'),'vent'); beep(880,0.07,'sine',0.24);
+    $('cprPhase').textContent='ventila';
+  }
+  cprIdx++;
+}
+function stopCPR(){cprOn=false;clearInterval(cprTimer);cprTimer=null;$('cprBtn').textContent='Iniciar 3:1';$('cprBtn').classList.remove('on');$('cprPhase').textContent='Uno · dos · tres · ventila';}
+$('cprBtn').addEventListener('click',()=>cprOn?stopCPR():startCPR());
+
+/* RCP general 110/min (BLS/RCP) */
+let rcpOn=false, rcpTimer=null;
+function startRCPgen(){
+  stopAllMetro('rcp');
+  rcpOn=true; $('rcpGenBtn').textContent='Detener'; $('rcpGenBtn').classList.add('on');
+  ensureAudio();
+  rcpTimer=setInterval(()=>{pulse($('compRing'),'comp');beep(600,0.045,'square',0.22);},60000/110);
+}
+function stopRCPgen(){rcpOn=false;clearInterval(rcpTimer);rcpTimer=null;$('rcpGenBtn').textContent='RCP 110/min';$('rcpGenBtn').classList.remove('on');}
+$('rcpGenBtn').addEventListener('click',()=>rcpOn?stopRCPgen():startRCPgen());
+
+function stopAllMetro(except){
+  if(except!=='vent'&&ventOn)stopVent();
+  if(except!=='cpr'&&cprOn)stopCPR();
+  if(except!=='rcp'&&rcpOn)stopRCPgen();
+}
+function pulse(el,cls){
+  el.classList.add('beat',cls);
+  setTimeout(()=>el.classList.remove('beat'),120);
+  setTimeout(()=>{el.classList.remove('vent','comp');el.classList.add(cls==='vent'&&el.id==='ventRing'?'vent':cls);},130);
+  // reasegurar clase base de color del ring
+  if(el.id==='ventRing')el.classList.add('vent');
+}
+
+/* ---------- Botón de sonido global ---------- */
+$('soundBtn').addEventListener('click',()=>{
+  soundOn=!soundOn; ensureAudio();
+  $('soundBtn').textContent = soundOn?'🔊 Sonido':'🔇 Silencio';
+  $('soundBtn').classList.toggle('on',soundOn);
+  if(soundOn)beep(880,0.08,'sine',0.2);
+});
+
+/* ============================================================
+   MODO INSTRUCTOR / PARTICIPANTE (PIN)
+   ============================================================ */
+const PIN='1234';
+let instrVisible=true, pinBuf='';
+function showPanel(v){
+  instrVisible=v;
+  $('instrPanel').classList.toggle('hidden',!v);
+  $('instrBtn').classList.toggle('on',v);
+  $('instrBtn').textContent = v?'👨‍⚕️ Instructor':'🙈 Participante';
+}
+$('instrBtn').addEventListener('click',()=>{
+  if(instrVisible){ showPanel(false); }        // ocultar: libre
+  else{ openPin(); }                            // mostrar: pide PIN
+});
+function openPin(){ pinBuf=''; drawPin(); $('pinOverlay').classList.remove('hidden'); }
+function closePin(){ $('pinOverlay').classList.add('hidden'); }
+function drawPin(){ document.querySelectorAll('.pindots i').forEach((d,i)=>d.classList.toggle('f',i<pinBuf.length)); }
+document.querySelectorAll('.pinpad button').forEach(b=>b.addEventListener('click',()=>{
+  const k=b.dataset.k;
+  if(k==='x'){closePin();return;}
+  if(k==='del'){pinBuf=pinBuf.slice(0,-1);drawPin();return;}
+  if(pinBuf.length<4){pinBuf+=k;drawPin();}
+  if(pinBuf.length===4){
+    if(pinBuf===PIN){closePin();showPanel(true);}
+    else{ setTimeout(()=>{pinBuf='';drawPin();},200); }
+  }
+}));
+
+/* ---------- Pantalla completa ---------- */
+$('fsBtn').addEventListener('click',()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }
+  else{ (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+});
+
+/* ---------- Reloj ---------- */
+setInterval(()=>{const d=new Date();$('clock').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');},1000);
+
+/* ---------- Init ---------- */
+function init(){
+  resizeAll();
+  $('hrRange').textContent=S.hrLow+'–160';
+  requestAnimationFrame(drawFrame);
+  // desbloquear audio en el primer toque
+  document.addEventListener('touchstart',ensureAudio,{once:true});
+  document.addEventListener('click',ensureAudio,{once:true});
+}
+window.addEventListener('load',init);
+setTimeout(resizeAll,300);
+</script>
+</body>
+</html>
